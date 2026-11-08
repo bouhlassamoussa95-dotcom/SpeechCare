@@ -80,3 +80,20 @@ Text fields intentionally do not force an HTML `lang` hint based on the app's di
 ### Important note about keyboard language picker
 
 SpeechCare no longer assigns a fixed `lang` attribute to generic editable fields. This prevents the app's display language from nudging Android's input method to a single language. If Gboard's own language picker still disappears, the remaining behavior may be in the Android System WebView/Chromium input-method integration rather than the app: a related Chromium report describes the Gboard language picker closing in Android web input fields on recent Chrome builds. Update Gboard and Android System WebView from Google Play, then retest. Apps cannot directly control or force Gboard's active language.
+
+
+## Cloud sync (Firebase) — how it works
+
+- **Same cloud paths as before:** `users/{uid}/app/data` and `users/{uid}/app/toys` (plus a rolling safety copy at `users/{uid}/app/backup`). Photos live in Firebase Storage under `users/{uid}/toys/`; Firestore stores only each photo's URL and path.
+- **Offline first:** every change is saved on the phone immediately and marked pending. The small pill at the bottom-left shows saving / saved / waiting / offline / error. "Saved to cloud" appears only after Firestore confirms the write. Pending changes survive closing the app and retry automatically (when the connection returns, when the app reopens, and every minute).
+- **Two phones:** both phones listen to the cloud documents. Changes are merged record by record (patients, sessions, reports, appointments, workplaces, toys, settings), so edits made on both phones are combined and an old phone cannot overwrite newer cloud data. Deleting on one phone deletes on the other.
+- **Never empty over data:** an empty phone never uploads over an existing cloud database, and a sudden empty state is restored from the cloud instead of wiping it.
+- **AI key unchanged:** the OpenRouter key and model stay only in each phone's own storage. The sync code never reads, uploads or resets them.
+- Tap the pill for details, **Sync now**, and **Test photo storage**.
+- Tests: `node tests/sync-test.js` (simulated Firestore/Storage and two phones; also run by the GitHub workflow).
+
+### One-time Firebase Console setup for photos
+1. Firebase Console → project `oprthophoniste-organisation` → **Build → Storage → Get started** (production mode, choose a region).
+2. **Storage → Rules** → paste the contents of `storage.rules` → **Publish**.
+3. **Firestore → Rules**: the existing `firestore.rules` is already correct and unchanged (publish it only if it is not already what you have).
+4. In the app, tap the sync pill → **Test photo storage**.
