@@ -187,3 +187,7 @@ button.act-hero::after{color:#fff;opacity:.85;bottom:auto;top:50%;transform:tran
 
 .ag-langopts{gap:3px}.ag-langopts button{padding:4px 7px;font-size:10.5px;white-space:nowrap}
 .agpick-btn{gap:4px;padding:6px 10px}
+
+.ovopt.add{color:var(--sec);font-weight:700}
+.ovadd{margin:-2px 0 10px;padding:10px;border:1px dashed var(--line);border-radius:14px}
+.ovadd input{margin:0}

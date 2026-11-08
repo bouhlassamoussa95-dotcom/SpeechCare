@@ -74,7 +74,7 @@
     items.forEach(function (it, i) {
       if (z && String(it.t).toLowerCase().indexOf(z) < 0) return;
       shown++;
-      h += '<button type="button" class="ovopt' + (String(it.v) === String(value) ? ' on' : '') + '" role="option" aria-selected="' + (String(it.v) === String(value)) + '" data-i="' + i + '"><span>' + escH(it.t) + '</span>' + icon('check', 18) + '</button>';
+      h += '<button type="button" class="ovopt' + (String(it.v) === String(value) ? ' on' : '') + (it.add ? ' add' : '') + '" role="option" aria-selected="' + (String(it.v) === String(value)) + '" data-i="' + i + '"><span>' + escH(it.t) + '</span>' + icon('check', 18) + '</button>';
     });
     box.innerHTML = h || '<div class="ovempty">' + tr('No results', 'Aucun résultat', 'لا توجد نتائج') + '</div>';
     return shown;
@@ -172,9 +172,10 @@
     refresh();
     b.addEventListener('click', function () {
       var items = qa('option', s).map(function (o) { return { v: o.value, t: o.text }; });
+      if (s.dataset.ovAdd === 'place') items.push({ v: '__add__', t: '\uFF0B ' + T('Add new center or daycare'), add: true });
       var asSheet = s.dataset.ovMode === 'sheet' || items.length > 7;
       b.setAttribute('aria-expanded', 'true');
-      var pick = function (v) { if (valDesc.get.call(s) !== String(v)) { s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); } };
+      var pick = function (v) { if (v === '__add__') { showAddPlace(s, b); return; } if (valDesc.get.call(s) !== String(v)) { s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); } };
       var base = { items: items, value: s.value, onPick: pick, onClose: function () { b.setAttribute('aria-expanded', 'false'); } };
       if (asSheet) sheetPicker(Object.assign({ title: titleOf(s), search: s.dataset.ovMode === 'sheet' || items.length > 7 }, base));
       else dropPicker(Object.assign({ anchor: b }, base));
@@ -201,6 +202,7 @@
   /* AI panel: grow from the AI button (transform-origin = button centre) */
   var _agOpen = window.agOpen;
   if (typeof _agOpen === 'function') window.agOpen = function () {
+    if (arguments[0] !== 1) AIT = null;
     var orb = q('#agent .orb'), r = orb && orb.getBoundingClientRect(), res = _agOpen.apply(this, arguments);
     var box = q('.agbox'), host = q('#agp');
     if (box && host && r && r.width) {
@@ -288,5 +290,131 @@
   };
   window.coRow = function (e, id) { if (e && e.target && e.target.closest('a,button')) return; coForm(id); };
 
-  window.UX = { haptic: haptic, closeOverlay: closeOverlay, sheetPicker: sheetPicker, dropPicker: dropPicker };
+
+  /* --------------------------------------- add a center / daycare inline */
+  function showAddPlace(s, b) {
+    var nx = b.nextElementSibling;
+    if (nx && nx.classList.contains('ovadd')) { q('input', nx).focus(); return; }
+    var d = doc.createElement('div'); d.className = 'ovadd'; var type = 'center';
+    d.innerHTML = '<input dir="auto" enterkeyhint="done" placeholder="' + escH(T('Name of the center or daycare')) + '"><div class="row" style="flex-wrap:nowrap;margin-top:6px"><button type="button" class="pill on" data-t="center">' + escH(T('Center')) + '</button><button type="button" class="pill" data-t="daycare">' + escH(T('Daycare')) + '</button><button type="button" class="b s" data-go="1">' + escH(T('Add place')) + '</button></div>';
+    b.after(d);
+    var inp = q('input', d);
+    function add() {
+      var n = inp.value.trim();
+      if (!n) { toast('Enter the name of the center or daycare'); inp.focus(); return; }
+      var ex = S.me.places.find(function (x) { return x.n.toLowerCase() === n.toLowerCase(); });
+      if (!ex) { S.me.places.push({ n: n, t: type, my: type === 'daycare' ? 60 : 50, fee: 0, mode: 'pct', mine: 0 }); if (window.CORE) CORE.migrate(); save(); toast('Place added'); }
+      var o = qa('option', s).find(function (x) { return x.value === (ex ? ex.n : n); });
+      if (!o) { o = new Option(ex ? ex.n : n, ex ? ex.n : n); s.add(o); }
+      s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); d.remove();
+    }
+    d.addEventListener('click', function (e) {
+      var pl = e.target.closest('.pill'); if (pl) { type = pl.dataset.t; qa('.pill', d).forEach(function (x) { x.classList.toggle('on', x === pl); }); return; }
+      if (e.target.closest('[data-go]')) add();
+    });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    setTimeout(function () { inp.focus(); }, 60);
+  }
+
+  /* ------------------------- keyboard: keep it up, and bring it back */
+  var EDIT = 'input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file]):not([type=range]),textarea,[contenteditable=true]';
+  var isEdit = function (el) { return !!(el && el.matches && el.matches(EDIT)); };
+  var lastEd = null, lostAt = 0, lastSel = null;
+  doc.addEventListener('focusin', function (e) { if (isEdit(e.target)) lastEd = e.target; }, true);
+  /* tapping a button must not steal focus: otherwise the first tap only closes the keyboard,
+     the layout jumps and the tap is lost ("Add place" / "Add activity" seemed dead) */
+  doc.addEventListener('mousedown', function (e) {
+    if (!isEdit(doc.activeElement) || isEdit(e.target)) return;
+    var b = e.target.closest && e.target.closest('button,.pill,[role=button]');
+    if (b && !b.matches('.ovsel,.ovopt,summary,.ux-grab,.ovgrab')) e.preventDefault();
+  }, true);
+  /* Gboard's long-press language popup takes window focus and Android hides the keyboard:
+     remember the field and re-open the keyboard when focus comes back */
+  window.addEventListener('blur', function () {
+    var a = doc.activeElement;
+    if (isEdit(a)) { lastEd = a; lostAt = Date.now(); try { lastSel = [a.selectionStart, a.selectionEnd]; } catch (e) { lastSel = null; } }
+  });
+  function revive() {
+    if (!lostAt || Date.now() - lostAt > 20000 || !lastEd || !lastEd.isConnected) { lostAt = 0; return; }
+    var a = doc.activeElement; lostAt = 0;
+    if (a !== lastEd && a !== doc.body && isEdit(a)) return;
+    [90, 380].forEach(function (ms) {
+      setTimeout(function () {
+        if (!lastEd || !lastEd.isConnected) return;
+        try { lastEd.blur(); lastEd.focus({ preventScroll: true }); if (lastSel && lastEd.setSelectionRange) lastEd.setSelectionRange(lastSel[0], lastSel[1]); } catch (e) {}
+      }, ms);
+    });
+  }
+  window.addEventListener('focus', revive);
+  doc.addEventListener('visibilitychange', function () { if (!doc.hidden) revive(); });
+
+  /* ------------------------------------ AI suggestions -> straight to the AI,
+     then "Insert into <box>" on the answer (or copy as before) */
+  var AIT = null;
+  function rl() { try { return agResponseLang(); } catch (e) { return lang(); } }
+  function L3(en, fr, ar) { var l = rl(); return l === 'ar' ? ar : l === 'fr' ? fr : en; }
+  function plain(t) { return String(t || '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#{1,6}\s*/gm, '').replace(/^\s*[*\u2022]\s+/gm, '- ').replace(/`/g, '').replace(/\n{3,}/g, '\n\n').trim(); }
+  function askAI(o) {
+    AIT = o.target || null;
+    try { AG.pid = o.pid || ''; AG.cid = ''; AG.msgs = []; AG.busy = 0; } catch (e) {}
+    if (AG.open) agRender(); else agOpen(1);
+    setTimeout(function () { agSend(o.prompt, o.label); }, AG.open ? 140 : 200);
+  }
+  var _agBub = window.agBub;
+  if (typeof _agBub === 'function') window.agBub = function (m, i) {
+    var h = _agBub.apply(this, arguments);
+    if (m && m.r === 'm' && !m.err && AIT && AIT.apply) {
+      var btn = '<button class="b t s" onclick="UX.insertAI(' + i + ')">' + escH(T('Insert into') + ' ' + T(AIT.label)) + '</button>';
+      h = h.replace(/<button class="b g s" onclick="agPlan\(\d+\)">[^<]*<\/button>/, '').replace(/(onclick="agCopy\(\d+\)">[^<]*<\/button>)/, '$1' + btn);
+    }
+    return h;
+  };
+  function insertAI(i) {
+    var m = AG.msgs[i]; if (!m || !AIT) return;
+    if (AIT.apply(m.t) === false) return;
+    agClose(); toast('Inserted');
+  }
+  var PLANQ = function () { return L3('Suggest a structured speech-therapy treatment plan: 3 to 4 goals, activities for each goal and a simple way to measure progress. Plain text only, no tables.', 'Propose un plan de traitement orthophonique structuré : 3 à 4 objectifs, des activités pour chaque objectif et une façon simple de mesurer les progrès. Texte simple, sans tableaux.', 'اقترح خطة علاجية منظمة فيها 3 إلى 4 أهداف وأنشطة لكل هدف وطريقة بسيطة لقياس التقدم. نص عادي بدون جداول.'); };
+  var ACTSQ = function () { return L3('Suggest 6 practical activities for the next session. For each: the activity, its goal and the materials needed. Short plain text.', 'Propose 6 activités pratiques pour la prochaine séance. Pour chacune : l’activité, son objectif et le matériel nécessaire. Texte court.', 'اقترح 6 أنشطة عملية للحصة القادمة. لكل نشاط: النشاط وهدفه والوسائل اللازمة. نص قصير.'); };
+  window.uxAskPlan = function () {
+    var g = function (id) { var e = q('#' + id); return e ? e.value.trim() : ''; };
+    var conds = qa('.ck input:checked').map(function (x) { var c = C.find(function (c) { return c[0] == x.value; }); return c ? c[1].split(' (')[0] : ''; }).filter(Boolean).join('; ');
+    var ctx = L3('Child age: ', 'Âge de l’enfant : ', 'عمر الطفل: ') + (g('p_birth') ? age(g('p_birth')) : '?') + '. ' + L3('Conditions: ', 'Pathologies : ', 'الحالات: ') + (conds || '-') + '. ' + L3('Symptoms: ', 'Symptômes : ', 'الأعراض: ') + (g('p_symptoms') || '-') + '. ' + L3('Diagnostic: ', 'Diagnostic : ', 'التشخيص: ') + (g('p_diag') || '-') + '.';
+    askAI({ label: L3('Treatment plan', 'Plan de traitement', 'خطة علاجية'), prompt: PLANQ() + '\n\n' + ctx, target: { label: 'Treatment plan (skills / activities)', apply: function (t) {
+      var e = q('#p_plan'); if (!e) { toast('Open the form again to insert.'); return false; }
+      e.value = (e.value.trim() ? e.value.trim() + '\n\n' : '') + plain(t); e.dispatchEvent(new Event('input', { bubbles: true })); } } });
+  };
+  window.uxAskPlanFor = function (id, kind) {
+    askAI({ pid: id, label: kind === 'acts' ? L3('Activities for the next session', 'Activités pour la prochaine séance', 'أنشطة للحصة القادمة') : L3('Treatment plan', 'Plan de traitement', 'خطة علاجية'),
+      prompt: kind === 'acts' ? ACTSQ() : PLANQ(), target: { label: 'Treatment plan (skills / activities)', apply: function (t) {
+        var p = P(id); if (!p) return false; p.plan = (p.plan ? p.plan + '\n\n' : '') + plain(t); save(); go(); } } });
+  };
+  window.uxAskGoal = function () {
+    var sel = q('#ap'), pid = sel ? sel.value : '';
+    askAI({ pid: pid, label: L3('Goal for the session', 'Objectif de la séance', 'هدف الحصة'),
+      prompt: L3('Suggest ONE specific, measurable goal (max 25 words) for the next session. Output only the goal.', 'Propose UN objectif thérapeutique précis et mesurable pour la prochaine séance (25 mots maximum). Donne uniquement l’objectif.', 'اقترح هدفاً علاجياً واحداً محدداً وقابلاً للقياس للحصة القادمة (25 كلمة كحد أقصى). أعطني الهدف فقط.'),
+      target: { label: 'Goal of this session', apply: function (t) {
+        var e = q('#ag'); if (!e) { toast('Open the form again to insert.'); return false; }
+        e.value = plain(t).replace(/^["\u201C]|["\u201D]$/g, '').trim().slice(0, 300); } } });
+  };
+  window.uxAskSection = function (i) {
+    var ta = qa('.rs textarea')[i]; if (!ta) return;
+    var lg = V.rl === 'fr' ? 1 : V.rl === 'ar' ? 2 : 0, title = ta.dataset.t, model = MODELS[V.rm][lg];
+    var langName = V.rl === 'ar' ? 'Algerian Arabic (Darija), clear and professional' : V.rl === 'fr' ? 'French' : 'English';
+    var draft = ta.value.trim();
+    askAI({ pid: V.pid, label: title, prompt: 'Write the section "' + title + '" of a speech-language therapy report (' + model + ') for this patient, using the context. Language: ' + langName + '. Output only the text of the section, plain text, concise and professional.' + (draft ? '\n\nCurrent draft to improve:\n' + draft : ''),
+      target: { label: title, apply: function (t) { var box = qa('.rs textarea')[i]; if (!box) return false; box.value = plain(t); box.dispatchEvent(new Event('input', { bubbles: true })); } } });
+  };
+  window.uxAskToyActs = function (id) {
+    var t = S.toys.find(function (x) { return x.id == id; }); if (!t) return;
+    var cat = toyCat(t.cat), what = t.name ? '"' + t.name + '" (' + cat + ')' : L3('a therapy toy in the category ', 'un jouet thérapeutique de la catégorie ', 'لعبة علاجية من فئة ') + '"' + cat + '"';
+    askAI({ label: L3('Activities with this toy', 'Activités avec ce jouet', 'أنشطة بهذه اللعبة'),
+      prompt: L3('Suggest 6 short speech-therapy activities that use this toy or material: ', 'Propose 6 courtes activités d’orthophonie utilisant ce jouet ou matériel : ', 'اقترح 6 أنشطة قصيرة للنطق تستعمل هذه اللعبة أو الأداة: ') + what + L3('. One activity per line, at most 8 words each, no numbering, no explanations.', '. Une activité par ligne, 8 mots maximum, sans numérotation ni explications.', '. نشاط واحد في كل سطر، 8 كلمات كحد أقصى، بدون ترقيم أو شرح.'),
+      target: { label: 'Linked activities', apply: function (txt) {
+        var tt = S.toys.find(function (x) { return x.id == id; }); if (!tt) return false;
+        var lines = String(txt || '').split(/\n/).filter(function (l) { return !/^\s*(#{1,6}\s|\*\*[^*]+\*\*:?\s*$)/.test(l) && !/:\s*$/.test(l.trim()); }).map(function (l) { return plain(l).replace(/^\s*(?:[-\u2022*]|\d+[.)\-])\s*/, '').trim(); }).filter(function (l) { return l.length > 1 && l.length < 100; }).slice(0, 8);
+        tt.acts = (tt.acts || []).concat(lines.filter(function (l) { return (tt.acts || []).indexOf(l) < 0; })); save(); go(); } } });
+  };
+
+  window.UX = { insertAI: insertAI, haptic: haptic, closeOverlay: closeOverlay, sheetPicker: sheetPicker, dropPicker: dropPicker };
 })();
