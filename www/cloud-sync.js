@@ -180,13 +180,13 @@
     var el = document.getElementById('scSync');
     if (!el) {
       var st = document.createElement('style');
-      st.textContent = '#scSync{position:fixed;left:10px;bottom:calc(68px + env(safe-area-inset-bottom,0px));z-index:30;font:600 12px/1 system-ui,sans-serif;padding:7px 11px;border-radius:999px;background:#222d;color:#fff;box-shadow:0 2px 8px #0003;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .4s}#scSync.ok{background:#1b7a4bdd}#scSync.warn{background:#b36b00e6}#scSync.err{background:#b3261eee}#scSync.dim{opacity:.55}#scSheetBg{position:fixed;inset:0;background:#0007;z-index:60;display:flex;align-items:center;justify-content:center;padding:18px}#scSheet{background:var(--card,#fff);color:var(--ink,#17262b);border-radius:18px;padding:16px;max-width:420px;width:100%;font:14px/1.45 system-ui,sans-serif;max-height:80vh;overflow:auto}#scSheet h3{margin:0 0 8px;font-size:17px}#scSheet button{margin:8px 8px 0 0;padding:10px 14px;border-radius:12px;border:0;background:var(--sec,#2f6fe4);color:#fff;font-weight:600;min-height:44px}#scSheet button.g{background:#8883;color:inherit}#scSheet .m{opacity:.75;font-size:12.5px;word-break:break-word}';
+      st.textContent = '#scSync{position:fixed;left:50%;transform:translateX(-50%);top:calc(60px + env(safe-area-inset-top,0px));z-index:30;font:600 12px/1 system-ui,sans-serif;padding:7px 11px;border-radius:999px;background:#222d;color:#fff;box-shadow:0 2px 8px #0003;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .4s}#scSync.ok{background:#1b7a4bdd}#scSync.warn{background:#b36b00e6}#scSync.err{background:#b3261eee}#scSync.dim{opacity:.55}#scSheetBg{position:fixed;inset:0;background:#0007;z-index:60;display:flex;align-items:center;justify-content:center;padding:18px}#scSheet{background:var(--card,#fff);color:var(--ink,#17262b);border-radius:18px;padding:16px;max-width:420px;width:100%;font:14px/1.45 system-ui,sans-serif;max-height:80vh;overflow:auto}#scSheet h3{margin:0 0 8px;font-size:17px}#scSheet button{margin:8px 8px 0 0;padding:10px 14px;border-radius:12px;border:0;background:var(--sec,#2f6fe4);color:#fff;font-weight:600;min-height:44px}#scSheet button.g{background:#8883;color:inherit}#scSheet .m{opacity:.75;font-size:12.5px;word-break:break-word}';
       document.head && document.head.appendChild(st);
       el = document.createElement('div'); el.id = 'scSync'; el.setAttribute('role', 'status');
       el.onclick = openSheet; document.body.appendChild(el);
     }
     var s = STATUS.s;
-    if (!C || s === 'idle') { el.style.display = 'none'; return; }
+    if (!C || s === 'idle' || s === 'saved' || s === 'saving') { el.style.display = 'none'; return; }   // automatic sync stays invisible unless something needs attention
     el.style.display = '';
     var t = TXT[s] || TXT.saved;
     el.textContent = (s === 'saved' ? '✓ ' : s === 'saving' ? '↻ ' : s === 'error' ? '⚠ ' : '☁ ') + L3(t[0], t[1], t[2]);
@@ -553,6 +553,18 @@
     var r = _ar.apply(this, arguments);
     try { if (C && S) { var o = JSON.parse(lsGet('speechcare_activity_runs') || '{}'); S.runs = o; if (typeof save === 'function') save(); } } catch (e) { }
     return r;
+  };
+  var esc3 = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  CORE.cardHtml = function () {
+    var s = STATUS.s, t = TXT[s] || TXT.saved, line = (s === 'saved' || s === 'idle') ? L3('Everything is saved to the cloud automatically.', 'Tout est enregistré automatiquement dans le cloud.', 'يتم حفظ كل شيء تلقائياً في السحابة.') : L3(t[0], t[1], t[2]);
+    return '<div class="card sec" style="--c:#1b7a4b"><h3>' + L3('Cloud sync', 'Synchronisation cloud', 'مزامنة السحابة') + '</h3><div>' + esc3(line) + '</div><div class="mut">' + L3('Last confirmed by Firebase: ', 'Dernière confirmation Firebase : ', 'آخر تأكيد من Firebase: ') + esc3(fmtT(lastSync)) + '</div>' + (storageState ? '<div class="mut">' + esc3(storageState) + '</div>' : '') +
+      '<button class="b s" onclick="CORE.syncNow().then(function(){go()})">' + L3('Sync now', 'Synchroniser', 'مزامنة الآن') + '</button> <button class="b s" onclick="CORE.checkStorage().then(function(){go()})">' + L3('Test photo storage', 'Tester le stockage photo', 'اختبار تخزين الصور') + '</button></div>';
+  };
+  var _set = G.set;
+  if (typeof _set === 'function') G.set = function () {
+    var h = _set.apply(this, arguments);
+    try { if (C) { var i = h.indexOf('<button class="b big" style="background:var(--red)'); var card = CORE.cardHtml(); h = i >= 0 ? h.slice(0, i) + card + h.slice(i) : h + card; } } catch (e) { }
+    return h;
   };
   var _lo = G.logout;
   if (typeof _lo === 'function') G.logout = async function () {

@@ -89,7 +89,7 @@ SpeechCare no longer assigns a fixed `lang` attribute to generic editable fields
 - **Two phones:** both phones listen to the cloud documents. Changes are merged record by record (patients, sessions, reports, appointments, workplaces, toys, settings), so edits made on both phones are combined and an old phone cannot overwrite newer cloud data. Deleting on one phone deletes on the other.
 - **Never empty over data:** an empty phone never uploads over an existing cloud database, and a sudden empty state is restored from the cloud instead of wiping it.
 - **AI key unchanged:** the OpenRouter key and model stay only in each phone's own storage. The sync code never reads, uploads or resets them.
-- Tap the pill for details, **Sync now**, and **Test photo storage**.
+- Sync is automatic and invisible; a small notice appears at the top only when something needs attention (offline, waiting, error). Settings → **Cloud sync** has **Sync now** and **Test photo storage**.
 - Tests: `node tests/sync-test.js` (simulated Firestore/Storage and two phones; also run by the GitHub workflow).
 
 ### One-time Firebase Console setup for photos
@@ -97,3 +97,12 @@ SpeechCare no longer assigns a fixed `lang` attribute to generic editable fields
 2. **Storage → Rules** → paste the contents of `storage.rules` → **Publish**.
 3. **Firestore → Rules**: the existing `firestore.rules` is already correct and unchanged (publish it only if it is not already what you have).
 4. In the app, tap the sync pill → **Test photo storage**.
+
+
+## AI key (GitHub secret — never commit the key)
+1. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**.
+2. Name: `OPENROUTER_API_KEY`  Value: your `sk-or-v1-...` key.
+3. Run the workflow. It writes the key into `www/config.js` during the build only; the repository keeps `orKey: ""`, so GitHub push protection has nothing to block.
+
+## Launcher icon
+Icon files use unique names (`speechcare_icon*`, `speechcare_fg`) and the manifest points to them, so Capacitor's default blue-X icon can never be used. Each build uploads an **IconCheck** artifact showing what the APK really contains.
